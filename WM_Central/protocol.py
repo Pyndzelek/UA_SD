@@ -15,21 +15,27 @@ def build_frame(text):
     data = text.encode()
     return STX + data + ETX + bytes([lrc(data)])
 
+def recv_byte(sock):
+    byte = sock.recv(1)
+    if byte == b"":
+        raise ConnectionError("peer closed the connection")
+    return byte
+
 def recv_message(sock):
     # 1. skip bytes until STX
-    byte = sock.recv(1)
+    byte = recv_byte(sock)
     while byte != STX:
-        byte = sock.recv(1)
+        byte = recv_byte(sock)
 
     # 2. collect DATA until ETX
     data = b""
-    byte = sock.recv(1)
+    byte = recv_byte(sock)
     while byte != ETX:
         data += byte
-        byte = sock.recv(1)
+        byte = recv_byte(sock)
 
     # 3. read the LRC and compare
-    received_lrc = sock.recv(1)[0]
+    received_lrc = recv_byte(sock)[0]
     if received_lrc == lrc(data):
         sock.sendall(ACK)
         return data.decode()
@@ -40,5 +46,5 @@ def recv_message(sock):
 
 def send_message(sock, text):
     sock.sendall(build_frame(text))
-    answer = sock.recv(1)
+    answer = recv_byte(sock)
     return answer == ACK
