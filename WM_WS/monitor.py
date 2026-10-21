@@ -34,6 +34,9 @@ leak = False
 while True:
     send_message(engine_conn, "HEALTH_CHECK")
     answer = recv_message(engine_conn)
+    progress = ""
+    if answer and answer.startswith(("WATERING", "DONE")):
+        progress = answer
     if answer == "KO":
         if not leak:
             leak = True
@@ -45,6 +48,16 @@ while True:
             send_message(sock, f"LEAK_CLEARED#{args.ws_id}")
             print("Engine OK again told central")
         print(f"Engine answered: {answer}")
+    poll = f"POLL#{args.ws_id}"
+    if progress:
+        poll += f"#{progress}"
+    send_message(sock, poll)
+    command = recv_message(sock)
+    if command != "NONE":
+        print(f"Central ordered: {command}")
+        send_message(engine_conn, command)
+        print(f"Engine replied: {recv_message(engine_conn)}")
+
     time.sleep(1)
 
 sock.close()
