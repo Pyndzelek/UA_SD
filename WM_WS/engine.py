@@ -6,21 +6,26 @@ import threading
 parser = argparse.ArgumentParser()
 parser.add_argument("monitor_ip")    # 127.0.0.1
 parser.add_argument("monitor_port", type=int)    # 6001
+parser.add_argument("kafka")    # localhost:9092
 args = parser.parse_args()
+
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect((args.monitor_ip, args.monitor_port))
 print(f"Connected to Monitor at {args.monitor_ip}:{args.monitor_port}")
 
-state = {"ko": False, "watering": False, "remaining": 0, "volume": 0.0}
+state = {"ko": False, "watering": False, "remaining": 0, "volume": 0.0, "elapsed": 0, "stop": False}
 FLOW = 12  # liters per minute
 
 
 def key_listener():
     while True:
-        input("Press enter to toggle KO\n")
-        state["ko"] = not state["ko"]
-        print(f"Engine state is now: {'KO' if state['ko'] else 'OK'}")
+        choice = input("Type 'ko' to toggle KO, 'stop' to end watering\n").strip()
+        if choice == "ko":
+            state["ko"] = not state["ko"]
+            print(f"Engine state is now: {'KO' if state['ko'] else 'OK'}")
+        elif choice == "stop":
+            state["stop"] = True
 
 
 threading.Thread(target=key_listener, daemon=True).start()
@@ -35,6 +40,7 @@ while True:
         state["watering"] = True
         state["remaining"] = int(fields[1])
         state["volume"] = 0.0
+        state["elapsed"] = 0
         print(f"Watering started for {fields[1]} seconds")
         send_message(sock, "STARTED")
     elif fields[0] == "BLOCK":
@@ -51,9 +57,11 @@ while True:
         elif state["watering"]:
             state["volume"] += FLOW / 60
             state["remaining"] -= 1
-            if state["remaining"] == 0:
+            state["elapsed"] += 1
+            if state["remaining"] == 0 or state["stop"]:
                 state["watering"] = False
-                send_message(sock, f"DONE#{state['volume']:.1f}")
+                state["stop"] = False
+                send_message(sock, f"DONE#{state['volume']:.1f}#{state['elapsed']}")
             else:
                 send_message(sock, f"WATERING#{FLOW}#{state['volume']:.1f}")
         else:

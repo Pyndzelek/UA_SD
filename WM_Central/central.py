@@ -118,9 +118,9 @@ def report_progress(ws_id, data):
         if operator_id:
             send_to_operator(operator_id, "WATERING", f"{data[1]} l/min, {data[2]} l")
     elif data[0] == "DONE":
-        print(f"{ws_id}: finished, total {data[1]} l")
+        print(f"{ws_id}: finished, total {data[1]} l in {data[2]} s")
         if operator_id:
-            send_to_operator(operator_id, "DONE", f"total {data[1]} l")
+            send_to_operator(operator_id, "DONE", f"total {data[1]} l in {data[2]} s")
             del operators[ws_id]
         if stations[ws_id]["state"] == "WATERING":
             stations[ws_id]["state"] = "AVAILABLE"
