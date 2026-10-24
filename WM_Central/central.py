@@ -57,6 +57,10 @@ def handle_monitor(conn, addr):
                 stations[ws_id] = {"location": fields[2], "state": "AVAILABLE"}
                 save_station(ws_id, fields[2])
                 print_stations()
+            elif fields[1] not in stations:
+                print(f"Ignoring {fields[0]} from unknown station {fields[1]}")
+                if fields[0] == "POLL":
+                    send_message(conn, "NONE")
             elif fields[0] == "LEAK":
                 stations[fields[1]]["state"] = "LEAK"
                 print_stations()
@@ -94,18 +98,22 @@ def listen_requests():
         print(f"FO request: {text}")
         fields = text.split("#")
         operator_id = fields[1]
-        ws_id = fields[2]
 
-        if ws_id not in stations:
-            reply = f"{operator_id}#DENIED#unknown station"
-        elif stations[ws_id]["state"] != "AVAILABLE":
-            reply = f"{operator_id}#DENIED#station is {stations[ws_id]['state']}"
+        if fields[0] == "LIST":
+            available = [f"{ws} ({info['location']})" for ws, info in stations.items() if info["state"] == "AVAILABLE"]
+            reply = f"{operator_id}#LIST#{', '.join(available) or 'none'}"
         else:
-            stations[ws_id]["state"] = "WATERING"
-            pending[ws_id] = "START#10"
-            operators[ws_id] = operator_id
-            print_stations()
-            reply = f"{operator_id}#OK#irrigation ordered"
+            ws_id = fields[2]
+            if ws_id not in stations:
+                reply = f"{operator_id}#DENIED#unknown station"
+            elif stations[ws_id]["state"] != "AVAILABLE":
+                reply = f"{operator_id}#DENIED#station is {stations[ws_id]['state']}"
+            else:
+                stations[ws_id]["state"] = "WATERING"
+                pending[ws_id] = "START#10"
+                operators[ws_id] = operator_id
+                print_stations()
+                reply = f"{operator_id}#OK#irrigation ordered"
 
         producer.send("fo-replies", reply.encode())
         producer.flush()

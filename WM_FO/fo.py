@@ -7,6 +7,7 @@ parser.add_argument("kafka")  # localhost:9092
 parser.add_argument("operator_id")  # OP1
 parser.add_argument("ws_id", nargs="?")  # WS1 (optional)
 parser.add_argument("--file")  # requests.txt (optional)
+parser.add_argument("--list", action="store_true")
 args = parser.parse_args()
 
 consumer = KafkaConsumer("fo-replies", bootstrap_servers=args.kafka)
@@ -26,7 +27,19 @@ def request(ws_id):
             if status in ("DENIED", "DONE", "ABORTED"):
                 break
 
+def list_available():
+    producer.send("fo-requests", f"LIST#{args.operator_id}".encode())
+    producer.flush()
+    for message in consumer:
+        operator_id, status, detail = message.value.decode().split("#")
+        if operator_id == args.operator_id and status == "LIST":
+            print(f"Available: {detail}")
+            break
 
+if args.list:
+    list_available()
+    raise SystemExit
+    
 if args.file:
     with open(args.file) as f:
         ws_ids = [line.strip() for line in f if line.strip()]
