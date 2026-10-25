@@ -1,0 +1,200 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>WM Central</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 2em;
+      }
+      h2 {
+        margin-bottom: 0.3em;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      td,
+      th {
+        padding: 6px 14px;
+        border-bottom: 1px solid #ddd;
+        text-align: left;
+      }
+      .AVAILABLE {
+        background: #7bd88f;
+      }
+      .WATERING {
+        background: #7bb6ff;
+      }
+      .OUT_OF_SERVICE {
+        background: #ffb347;
+      }
+      .LEAK {
+        background: #ff6b6b;
+      }
+      .DISCONNECTED {
+        background: #ccc;
+      }
+      #summary span {
+        display: inline-block;
+        padding: 4px 12px;
+        margin-right: 8px;
+        border-radius: 4px;
+      }
+      #banner {
+        display: none;
+        background: #ff6b6b;
+        color: #fff;
+        padding: 10px;
+        margin: 10px 0;
+        font-weight: bold;
+      }
+      #status {
+        float: right;
+        font-size: 0.9em;
+      }
+      #logs {
+        background: #111;
+        color: #ddd;
+        font-family: monospace;
+        font-size: 13px;
+        height: 260px;
+        overflow-y: auto;
+        padding: 8px;
+        white-space: pre-wrap;
+      }
+      #logs .err {
+        color: #ff8a8a;
+      }
+      #logs .ok {
+        color: #8be59b;
+      }
+      button:disabled {
+        opacity: 0.35;
+      }
+    </style>
+  </head>
+  <body>
+    <span id="status"></span>
+    <h2>Stations</h2>
+    <div id="banner"></div>
+    <table>
+      <thead>
+        <tr>
+          <th>Station</th>
+          <th>Location</th>
+          <th>State</th>
+          <th>Flow</th>
+          <th>Volume</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p>All stations: <span id="all"></span></p>
+
+    <h2>Logs</h2>
+    <label><input type="checkbox" id="follow" checked /> follow</label>
+    <label
+      ><input type="checkbox" id="nopoll" /> hide POLL / station tables</label
+    >
+    <div id="logs"></div>
+
+    <script>
+      const STATES = [
+        "AVAILABLE",
+        "WATERING",
+        "OUT_OF_SERVICE",
+        "LEAK",
+        "DISCONNECTED",
+      ];
+      // which actions make sense in which state (same rules as apply_command)
+      const ALLOWED = {
+        start: ["AVAILABLE"],
+        block: ["AVAILABLE", "WATERING", "LEAK"],
+        activate: ["OUT_OF_SERVICE"],
+      };
+
+      function buttons(ws, state) {
+        return ["start", "block", "activate"]
+          .map((a) => {
+            const off = state && !ALLOWED[a].includes(state) ? "disabled" : "";
+            return `<button ${off} onclick="act('${a}','${ws}')">${a}</button>`;
+          })
+          .join(" ");
+      }
+
+      async function act(action, ws) {
+        await fetch(`/do?action=${action}&ws=${ws}`);
+        refresh();
+      }
+
+      async function refresh() {
+        try {
+          const stations = await (await fetch("/state")).json();
+          const counts = {};
+          const leaks = [];
+          let html = "";
+          for (const [id, s] of Object.entries(stations)) {
+            counts[s.state] = (counts[s.state] ?? 0) + 1;
+            if (s.state === "LEAK") leaks.push(id);
+            const watering = s.state === "WATERING";
+            html +=
+              `<tr><td>${id}</td><td>${s.location}</td>` +
+              `<td class="${s.state}">${s.state}</td>` +
+              `<td>${watering ? (s.flow ?? 0) + " l/min" : ""}</td>` +
+              `<td>${watering ? (s.volume ?? 0) + " l" : ""}</td>` +
+              `<td>${buttons(id, s.state)}</td></tr>`;
+          }
+          document.getElementById("rows").innerHTML = html;
+          document.getElementById("summary").innerHTML = STATES.map(
+            (st) => `<span class="${st}">${st}: ${counts[st] ?? 0}</span>`,
+          ).join("");
+          const banner = document.getElementById("banner");
+          banner.style.display = leaks.length ? "block" : "none";
+          banner.textContent = "LEAK detected at: " + leaks.join(", ");
+          document.getElementById("status").textContent =
+            "updated " + new Date().toLocaleTimeString();
+        } catch (e) {
+          document.getElementById("status").textContent =
+            "Central not reachable";
+        }
+      }
+
+      async function refreshLogs() {
+        try {
+          const lines = await (await fetch("/logs")).json();
+          const box = document.getElementById("logs");
+          const hide = document.getElementById("nopoll").checked;
+          box.innerHTML = lines
+            .filter(
+              (l) =>
+                !hide ||
+                !/POLL|--- stations ---|^\S+ +\S+ +\S+ +(AVAILABLE|WATERING|LEAK|OUT_OF_SERVICE|DISCONNECTED)/.test(
+                  l,
+                ),
+            )
+            .map((l) => {
+              const cls =
+                /DENIED|ABORTED|LEAK|disconnected|cannot|Ignoring|KO/.test(l)
+                  ? "err"
+                  : /registered|finished|DONE|OK/.test(l)
+                    ? "ok"
+                    : "";
+              return `<div class="${cls}">${l.replace(/</g, "&lt;")}</div>`;
+            })
+            .join("");
+          if (document.getElementById("follow").checked)
+            box.scrollTop = box.scrollHeight;
+        } catch (e) {}
+      }
+
+      document.getElementById("all").innerHTML = buttons("all", null);
+      setInterval(refresh, 1000);
+      setInterval(refreshLogs, 1000);
+      refresh();
+      refreshLogs();
+    </script>
+  </body>
+</html>

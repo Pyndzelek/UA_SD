@@ -5,6 +5,30 @@ from protocol import recv_message, send_message
 from database import init_db, load_stations, save_station
 from kafka import KafkaConsumer, KafkaProducer
 
+import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse, parse_qs
+import sys
+import time
+from collections import deque
+
+logs = deque(maxlen=2000)
+
+
+class Tee:
+    def __init__(self, real):
+        self.real = real
+
+    def write(self, text):
+        self.real.write(text)
+        if text.strip():
+            logs.append(time.strftime("%H:%M:%S ") + text.rstrip())
+
+    def flush(self):
+        self.real.flush()
+
+
+sys.stdout = Tee(sys.stdout)
 
 parser = argparse.ArgumentParser(description="WM_Central")
 parser.add_argument("port", type=int) 
@@ -122,7 +146,8 @@ def listen_requests():
 def report_progress(ws_id, data):
     operator_id = operators.get(ws_id)
     if data[0] == "WATERING":
-        print(f"{ws_id}: {data[1]} l/min, {data[2]} l")
+        stations[ws_id]["flow"] = data[1]
+        stations[ws_id]["volume"] = data[2]
         if operator_id:
             send_to_operator(operator_id, "WATERING", f"{data[1]} l/min, {data[2]} l")
     elif data[0] == "DONE":
@@ -178,6 +203,39 @@ def admin_console():
 
 threading.Thread(target=admin_console, daemon=True).start()
 threading.Thread(target=listen_requests, daemon=True).start()
+
+class Panel(BaseHTTPRequestHandler):
+    def do_GET(self):
+        url = urlparse(self.path) 
+        if url.path == "/state":
+            body = json.dumps(stations).encode()
+            content_type = "application/json"
+        elif url.path == "/logs":
+            body = json.dumps(list(logs)).encode()
+            content_type = "application/json"
+        elif url.path == "/do":
+            query = parse_qs(url.query) # {"action": ["block"], "ws": ["WS1"]}
+            action = query["action"][0]
+            target = query["ws"][0]
+            targets = list(stations) if target == "all" else [target]
+            for ws_id in targets:
+                if ws_id in stations and action in ("start", "block", "activate"):
+                    apply_command(action, ws_id)
+            body = b"ok"
+            content_type = "text/plain"
+        else:
+            body = open("index.html", "rb").read()
+            content_type = "text/html"
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+threading.Thread(target=HTTPServer(("0.0.0.0", 8000), Panel).serve_forever, daemon=True).start()
 
 
 while True:

@@ -23,6 +23,7 @@ services:
     command: ["5000", "kafka:19092"]
     ports:
       - "5000:5000"
+      - "8000:8000"
     depends_on:
       - kafka
     restart: on-failure
@@ -45,6 +46,26 @@ services:
     tty: true
     depends_on:
       - monitor
+    restart: on-failure
+
+  monitor2:
+    build:
+      context: .
+      dockerfile: WM_WS/Dockerfile.monitor
+    command: ["6001", "central", "5000", "WS2", "Garden"]
+    depends_on:
+      - central
+    restart: on-failure
+
+  engine2:
+    build:
+      context: .
+      dockerfile: WM_WS/Dockerfile.engine
+    command: ["monitor2", "6001", "kafka:19092"]
+    stdin_open: true
+    tty: true
+    depends_on:
+      - monitor2
     restart: on-failure
 
   fo:
