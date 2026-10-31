@@ -2,7 +2,7 @@ import argparse
 import socket
 import threading
 from protocol import recv_message, send_message
-from database import init_db, load_stations, save_station
+from database import init_db, load_stations, load_operators, save_station, save_operator
 from kafka import KafkaConsumer, KafkaProducer
 
 import json
@@ -33,6 +33,8 @@ sys.stdout = Tee(sys.stdout)
 parser = argparse.ArgumentParser(description="WM_Central")
 parser.add_argument("port", type=int) 
 parser.add_argument("kafka")  # localhost:9092
+parser.add_argument("--panel-port", type=int, default=8000)
+parser.add_argument("--db", default="central.db")
 args = parser.parse_args()
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -57,15 +59,18 @@ def print_stations():
     for ws_id, info in stations.items():
         print(f"{ws_id:6} {info['location']:10} {info['state']}")
 
-init_db()
+init_db(args.db)
 for ws_id, location in load_stations():
     stations[ws_id] = {"location": location, "state": "DISCONNECTED"}
+registered_operators = load_operators()
 print_stations()
+print(f"Registered operators: {', '.join(registered_operators)}")
 
 
 def handle_monitor(conn, addr):
     print(f"Connection from {addr}")
     ws_id = None
+    conn.settimeout(5)  # monitor polls every second, 5 s of silence = disconnected
     try:
         while True:
             message = recv_message(conn)
@@ -75,6 +80,11 @@ def handle_monitor(conn, addr):
 
             fields = message.split("#")
             if fields[0] == "REGISTER":
+                # new stations are registered automatically, only a duplicate ID is denied
+                if fields[1] in stations and stations[fields[1]]["state"] != "DISCONNECTED":
+                    print(f"DENIED registration of {fields[1]}: already connected")
+                    send_message(conn, "REGISTER_DENIED#already connected")
+                    return
                 ws_id = fields[1]
                 print(f"Station {ws_id} registered at {fields[2]}")
                 send_message(conn, f"REGISTER_OK#{ws_id}")
@@ -88,23 +98,42 @@ def handle_monitor(conn, addr):
             elif fields[0] == "LEAK":
                 stations[fields[1]]["state"] = "LEAK"
                 print_stations()
+                detail = "leak detected"
+                if len(fields) > 3:  # the leak stopped a watering: LEAK#ws#volume#seconds
+                    detail += f", watered {fields[2]} l in {fields[3]} s"
+                    print(f"{fields[1]}: watering stopped by leak, {fields[2]} l in {fields[3]} s")
                 operator_id = operators.pop(fields[1], None)
                 if operator_id:
-                    send_to_operator(operator_id, "ABORTED", "leak detected")
+                    send_to_operator(operator_id, "ABORTED", detail)
             elif fields[0] == "LEAK_CLEARED":
                 if stations[fields[1]]["state"] == "LEAK":
                     stations[fields[1]]["state"] = "AVAILABLE"
                 print_stations()
+            elif fields[0] == "REQUEST":  # watering asked from the station's own menu
+                state = stations[fields[1]]["state"]
+                if state == "AVAILABLE":
+                    print(f"{fields[1]}: manual watering for {fields[2]} s authorized")
+                    stations[fields[1]]["state"] = "WATERING"
+                    pending[fields[1]] = f"START#{fields[2]}"
+                    print_stations()
+                else:
+                    print(f"{fields[1]}: manual watering denied, station is {state}")
+                    pending[fields[1]] = f"DENIED#station is {state}"
+            elif fields[0] == "DONE":
+                report_progress(fields[1], ["DONE"] + fields[2:])
             elif fields[0] == "POLL":
                 if len(fields) > 2:
                     report_progress(fields[1], fields[2:])
                 send_message(conn, pending.pop(fields[1], "NONE"))
 
-    except ConnectionError:
+    except OSError:  # closed, crashed or silent for 5 s
         print(f"{addr} disconnected")
         if ws_id is not None:
             stations[ws_id]["state"] = "DISCONNECTED"
             print_stations()
+            operator_id = operators.pop(ws_id, None)
+            if operator_id:
+                send_to_operator(operator_id, "ABORTED", "station monitor lost")
     finally:
         conn.close()
 
@@ -122,6 +151,11 @@ def listen_requests():
         print(f"FO request: {text}")
         fields = text.split("#")
         operator_id = fields[1]
+
+        if operator_id not in registered_operators:  # new operators are registered automatically
+            registered_operators.append(operator_id)
+            save_operator(operator_id)
+            print(f"Operator {operator_id} registered")
 
         if fields[0] == "LIST":
             available = [f"{ws} ({info['location']})" for ws, info in stations.items() if info["state"] == "AVAILABLE"]
@@ -146,6 +180,9 @@ def listen_requests():
 def report_progress(ws_id, data):
     operator_id = operators.get(ws_id)
     if data[0] == "WATERING":
+        if stations[ws_id]["state"] == "AVAILABLE":  # e.g. central restarted mid-watering
+            stations[ws_id]["state"] = "WATERING"
+            print_stations()
         stations[ws_id]["flow"] = data[1]
         stations[ws_id]["volume"] = data[2]
         if operator_id:
@@ -235,7 +272,7 @@ class Panel(BaseHTTPRequestHandler):
         pass
 
 
-threading.Thread(target=HTTPServer(("0.0.0.0", 8000), Panel).serve_forever, daemon=True).start()
+threading.Thread(target=HTTPServer(("0.0.0.0", args.panel_port), Panel).serve_forever, daemon=True).start()
 
 
 while True:

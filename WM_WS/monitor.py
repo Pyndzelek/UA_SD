@@ -31,7 +31,13 @@ def every_second(function, *function_args):
 def report_leak(reason):
     if not state["leak"]:
         state["leak"] = True
-        to_central.put(f"LEAK#{args.ws_id}")
+        message = f"LEAK#{args.ws_id}"
+        if state["last_progress"]:  # it was watering, keep what was already watered
+            fields = state["last_progress"].split("#")  # WATERING#flow#volume#seconds
+            message += f"#{fields[2]}#{fields[3]}"
+            print(f"Watering interrupted after {fields[2]} l in {fields[3]} s")
+            state["last_progress"] = ""
+        to_central.put(message)
         print(f"FAULT: {reason}, leak reported to central")
 
 
@@ -54,6 +60,7 @@ def health_check(conn, engine_lost):
             print(f"Engine answered: {answer}")
 
             state["progress"] = ""
+            state["last_progress"] = ""
             if answer.startswith("WATERING"):
                 state["progress"] = answer
                 state["last_progress"] = answer
@@ -61,7 +68,9 @@ def health_check(conn, engine_lost):
                 # queued, so the summary is not lost if central is down
                 fields = answer.split("#")
                 to_central.put(f"DONE#{args.ws_id}#{fields[1]}#{fields[2]}")
-                state["last_progress"] = ""
+            elif answer.startswith("REQUEST"):  # watering asked from the station menu
+                to_central.put(f"REQUEST#{args.ws_id}#{answer.split('#')[1]}")
+                print("Station menu asked for watering, forwarded to central")
 
         while not to_engine.empty():
             command = to_engine.get()
