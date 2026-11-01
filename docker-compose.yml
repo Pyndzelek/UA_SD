@@ -41,7 +41,7 @@ services:
     build:
       context: .
       dockerfile: WM_WS/Dockerfile.engine
-    command: ["monitor", "6001", "kafka:19092"]
+    command: ["kafka:19092", "monitor", "6001"]
     stdin_open: true
     tty: true
     depends_on:
@@ -61,7 +61,7 @@ services:
     build:
       context: .
       dockerfile: WM_WS/Dockerfile.engine
-    command: ["monitor2", "6001", "kafka:19092"]
+    command: ["kafka:19092", "monitor2", "6001"]
     stdin_open: true
     tty: true
     depends_on:

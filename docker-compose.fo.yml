@@ -1,0 +1,9 @@
+#   OPERATOR=OP2 docker compose -f docker-compose.fo.yml run --rm fo
+services:
+  fo:
+    build:
+      context: .
+      dockerfile: WM_FO/Dockerfile
+    command: ["${KAFKA:?set KAFKA in .env}", "${OPERATOR:-OP1}"]
+    stdin_open: true
+    tty: true

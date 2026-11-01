@@ -4,10 +4,10 @@ from protocol import recv_message, send_message
 import threading
 import time
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description="WM_WS_E")
+parser.add_argument("kafka")    # localhost:9092
 parser.add_argument("monitor_ip")    # 127.0.0.1
 parser.add_argument("monitor_port", type=int)    # 6001
-parser.add_argument("kafka")    # localhost:9092
 args = parser.parse_args()
 
 state = {"ko": False, "watering": False, "remaining": 0, "volume": 0.0, "elapsed": 0, "stop": False,

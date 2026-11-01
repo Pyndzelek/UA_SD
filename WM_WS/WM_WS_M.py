@@ -6,7 +6,7 @@ import threading
 import time
 from protocol import send_message, recv_message
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description="WM_WS_M")
 parser.add_argument("engine_port", type=int)  # 6001
 parser.add_argument("central_ip") # 127.0.0.1
 parser.add_argument("central_port", type=int) # 5000

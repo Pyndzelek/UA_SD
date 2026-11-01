@@ -231,7 +231,10 @@ def apply_command(action, ws_id, seconds="10"):
 
 def admin_console():
     while True:
-        parts = input().split()
+        try:
+            parts = input().split()
+        except EOFError:  # no keyboard (e.g. on Railway), use the web panel instead
+            return
         if len(parts) not in (2, 3) or parts[0] not in ("start", "block", "activate"):
             print("usage: start <ws_id|all> [seconds] | block <ws_id|all> | activate <ws_id|all>")
             continue

@@ -3,5 +3,5 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY WM_Central/ .
-ENTRYPOINT ["python", "-u", "central.py"]
-
+RUN mkdir -p /app/data
+ENTRYPOINT ["python", "-u", "WM_Central.py"]

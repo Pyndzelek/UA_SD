@@ -1,0 +1,28 @@
+# one watering station - monitor + engine
+#   WS_ID=WS3 LOCATION=Lake docker compose -p ws3 -f docker-compose.ws.yml up -d --build
+#   docker attach ws3-engine-1      (station menu, detach with Ctrl+P Ctrl+Q)
+services:
+  monitor:
+    build:
+      context: .
+      dockerfile: WM_WS/Dockerfile.monitor
+    command:
+      [
+        "6001",
+        "${CENTRAL_HOST:?set CENTRAL_HOST in .env}",
+        "${CENTRAL_PORT:-5000}",
+        "${WS_ID:-WS1}",
+        "${LOCATION:-Park}",
+      ]
+    restart: on-failure
+
+  engine:
+    build:
+      context: .
+      dockerfile: WM_WS/Dockerfile.engine
+    command: ["${KAFKA:?set KAFKA in .env}", "monitor", "6001"]
+    stdin_open: true
+    tty: true
+    depends_on:
+      - monitor
+    restart: on-failure
