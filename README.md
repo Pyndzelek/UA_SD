@@ -1,3 +1,13 @@
+# central on aws
+
+panel: `http://<ec2 ip>:8000`
+
+ssh: `ssh -i wm-key.pem ubuntu@<ec2 ip>`, then `cd watering_management_system`
+
+logs: `docker logs -f watering_management_system-central-1`
+
+admin console: `docker attach watering_management_system-central-1`
+
 # lab
 
 --- first station ---
