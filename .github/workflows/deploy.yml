@@ -1,5 +1,5 @@
 # CI/CD: every push to main redeploys the cloud part on the EC2 machine
-# needs the repo secrets EC2_HOST (public ip) and EC2_KEY (labsuser.pem content)
+# needs the repo secrets EC2_HOST (public ip) and EC2_KEY (content of the .pem key file)
 name: deploy to aws
 
 on:
@@ -13,7 +13,7 @@ jobs:
       - uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
-          username: ec2-user
+          username: ubuntu
           key: ${{ secrets.EC2_KEY }}
           script: |
             cd watering_management_system
