@@ -25,7 +25,13 @@
         background: #7bd88f;
       }
       .WATERING {
-        background: #7bb6ff;
+        background: #7bd88f;
+        animation: blink 1s infinite;
+      }
+      @keyframes blink {
+        50% {
+          background: #d6f5dc;
+        }
       }
       .OUT_OF_SERVICE {
         background: #ffb347;
@@ -79,12 +85,14 @@
     <span id="status"></span>
     <h2>Stations</h2>
     <div id="banner"></div>
+    <p id="summary"></p>
     <table>
       <thead>
         <tr>
           <th>Station</th>
           <th>Location</th>
           <th>State</th>
+          <th>Operator</th>
           <th>Flow</th>
           <th>Volume</th>
           <th>Actions</th>
@@ -116,6 +124,8 @@
         activate: ["OUT_OF_SERVICE"],
       };
 
+      const LABELS = { OUT_OF_SERVICE: "Out of Service" };
+
       function buttons(ws, state) {
         return ["start", "block", "activate"]
           .map((a) => {
@@ -140,16 +150,19 @@
             counts[s.state] = (counts[s.state] ?? 0) + 1;
             if (s.state === "LEAK") leaks.push(id);
             const watering = s.state === "WATERING";
+            // while watering: current volume, otherwise the total of the last watering
+            const volume = s.volume === undefined ? "" : (watering ? "" : "last: ") + s.volume + " l";
             html +=
               `<tr><td>${id}</td><td>${s.location}</td>` +
-              `<td class="${s.state}">${s.state}</td>` +
+              `<td class="${s.state}">${LABELS[s.state] ?? s.state}</td>` +
+              `<td>${watering ? (s.operator ?? "") : ""}</td>` +
               `<td>${watering ? (s.flow ?? 0) + " l/min" : ""}</td>` +
-              `<td>${watering ? (s.volume ?? 0) + " l" : ""}</td>` +
+              `<td>${volume}</td>` +
               `<td>${buttons(id, s.state)}</td></tr>`;
           }
           document.getElementById("rows").innerHTML = html;
           document.getElementById("summary").innerHTML = STATES.map(
-            (st) => `<span class="${st}">${st}: ${counts[st] ?? 0}</span>`,
+            (st) => `<span class="${st}">${LABELS[st] ?? st}: ${counts[st] ?? 0}</span>`,
           ).join("");
           const banner = document.getElementById("banner");
           banner.style.display = leaks.length ? "block" : "none";

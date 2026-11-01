@@ -113,9 +113,7 @@ def handle_monitor(conn, addr):
                 state = stations[fields[1]]["state"]
                 if state == "AVAILABLE":
                     print(f"{fields[1]}: manual watering for {fields[2]} s authorized")
-                    stations[fields[1]]["state"] = "WATERING"
-                    pending[fields[1]] = f"START#{fields[2]}"
-                    print_stations()
+                    start_watering(fields[1], fields[2], "LOCAL")
                 else:
                     print(f"{fields[1]}: manual watering denied, station is {state}")
                     pending[fields[1]] = f"DENIED#station is {state}"
@@ -162,19 +160,25 @@ def listen_requests():
             reply = f"{operator_id}#LIST#{', '.join(available) or 'none'}"
         else:
             ws_id = fields[2]
+            seconds = fields[3] if len(fields) > 3 else "10"
             if ws_id not in stations:
                 reply = f"{operator_id}#DENIED#unknown station"
             elif stations[ws_id]["state"] != "AVAILABLE":
                 reply = f"{operator_id}#DENIED#station is {stations[ws_id]['state']}"
             else:
-                stations[ws_id]["state"] = "WATERING"
-                pending[ws_id] = "START#10"
                 operators[ws_id] = operator_id
-                print_stations()
-                reply = f"{operator_id}#OK#irrigation ordered"
+                start_watering(ws_id, seconds, operator_id)
+                reply = f"{operator_id}#OK#irrigation ordered for {seconds} s"
 
         producer.send("fo-replies", reply.encode())
         producer.flush()
+
+
+def start_watering(ws_id, seconds, who):
+    # who = operator id, LOCAL (station menu) or CENTRAL (console / panel)
+    stations[ws_id].update({"state": "WATERING", "operator": who, "flow": "0", "volume": "0.0"})
+    pending[ws_id] = f"START#{seconds}"
+    print_stations()
 
 
 def report_progress(ws_id, data):
@@ -189,6 +193,7 @@ def report_progress(ws_id, data):
             send_to_operator(operator_id, "WATERING", f"{data[1]} l/min, {data[2]} l")
     elif data[0] == "DONE":
         print(f"{ws_id}: finished, total {data[1]} l in {data[2]} s")
+        stations[ws_id]["volume"] = data[1]  # panel keeps showing the last total
         if operator_id:
             send_to_operator(operator_id, "DONE", f"total {data[1]} l in {data[2]} s")
             del operators[ws_id]
@@ -197,14 +202,15 @@ def report_progress(ws_id, data):
             print_stations()
 
 
-def apply_command(action, ws_id):
+def apply_command(action, ws_id, seconds="10"):
     state = stations[ws_id]["state"]
     if action == "start":
         if state != "AVAILABLE":
             print(f"{ws_id} cannot start: it is {state}")
             return
-        stations[ws_id]["state"] = "WATERING"
-        pending[ws_id] = "START#10"
+        start_watering(ws_id, seconds, "CENTRAL")
+        print(f"{ws_id}: watering for {seconds} s ordered by CENTRAL")
+        return
     elif action == "block":
         if state == "DISCONNECTED":
             print(f"{ws_id} cannot be blocked: it is DISCONNECTED")
@@ -226,14 +232,15 @@ def apply_command(action, ws_id):
 def admin_console():
     while True:
         parts = input().split()
-        if len(parts) != 2 or parts[0] not in ("start", "block", "activate"):
-            print("usage: start|block|activate <ws_id|all>")
+        if len(parts) not in (2, 3) or parts[0] not in ("start", "block", "activate"):
+            print("usage: start <ws_id|all> [seconds] | block <ws_id|all> | activate <ws_id|all>")
             continue
-        action, target = parts
+        action, target = parts[0], parts[1]
+        seconds = parts[2] if len(parts) == 3 and parts[2].isdigit() else "10"
         targets = list(stations) if target == "all" else [target]
         for ws_id in targets:
             if ws_id in stations:
-                apply_command(action, ws_id)
+                apply_command(action, ws_id, seconds)
             else:
                 print(f"unknown station {ws_id}")
 
