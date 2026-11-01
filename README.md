@@ -1,28 +1,32 @@
 # lab
 
-on both PCs: `cp .env.example .env` and put the ec2 public ip in it
+--- first station ---
 
-PC 2, one station (repeat with another WS_ID and -p name for more stations)
+terminal 1, monitor with its logs
 
-`WS_ID=WS1 LOCATION=Park docker compose -p ws1 -f docker-compose.ws.yml up -d --build`
+`WS_ID=WS1 LOCATION=Park docker compose -p ws1 -f docker-compose.ws.yml up --build monitor`
 
-`WS_ID=WS2 LOCATION=Garden docker compose -p ws2 -f docker-compose.ws.yml up -d --build`
+terminal 2, engine with its menu
 
-station menu: `docker attach ws1-engine-1` (leave with Ctrl+P Ctrl+Q)
+`docker compose -p ws1 -f docker-compose.ws.yml run --rm --build --no-deps engine`
 
-monitor logs: `docker logs -f ws1-monitor-1`
+--- second station ---
 
-crash a station: `docker kill ws1-engine-1` or `docker kill ws1-monitor-1`, start again: `docker compose -p ws1 -f docker-compose.ws.yml up -d`
+monitor
+`WS_ID=WS2 LOCATION=Garden docker compose -p ws2 -f docker-compose.ws.yml up --build monitor`
 
-PC 1, one field operator per terminal (menu)
+engine
+`docker compose -p ws2 -f docker-compose.ws.yml run --rm --build --no-deps engine`
 
-`OPERATOR=OP1 docker compose -f docker-compose.fo.yml run --rm fo`
+--- field operators ---
 
-`OPERATOR=OP2 docker compose -f docker-compose.fo.yml run --rm fo`
+`OPERATOR=OP1 docker compose -f docker-compose.fo.yml run --rm --build fo`
 
-field operator from the requests file (no interaction)
+`OPERATOR=OP2 docker compose -f docker-compose.fo.yml run --rm --build fo`
 
-`docker compose -f docker-compose.fo.yml run --rm fo <ec2 ip>:9092 OP1 --file requests.txt`
+field operator from the requests file
+
+`docker compose -f docker-compose.fo.yml run --rm --build fo <ec2 ip>:9092 OP1 --file requests.txt`
 
 requests.txt format: one watering per line, `<WS_ID> [seconds]`, default 10 seconds
 

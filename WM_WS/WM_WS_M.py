@@ -93,6 +93,7 @@ def engine_side():
     engine_server.listen()
 
     while True:
+        report_leak("Engine not connected")  # no engine = no answer, central must not send it waterings
         print(f"Waiting for Engine on port {args.engine_port}")
         conn, addr = engine_server.accept()
         conn.settimeout(2)

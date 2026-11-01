@@ -1,4 +1,5 @@
-#   OPERATOR=OP2 docker compose -f docker-compose.fo.yml run --rm fo
+#   OPERATOR=OP2 docker compose -f docker-compose.fo.yml run --rm --build fo
+name: fo
 services:
   fo:
     build:
