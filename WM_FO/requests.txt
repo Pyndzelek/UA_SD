@@ -1,3 +1,5 @@
-WS1
-WS9
+# one watering per line: <station> [seconds], default 10 seconds
+WS1 15
+WS9 5
+WS2 8
 WS1
